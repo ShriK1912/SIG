@@ -20,7 +20,19 @@ export type AgentDecision = {
   reasoning: string;
   requires_approval: boolean;
   root_cause?: string;
-  predictions?: Array<Record<string, unknown>>;
+  // List of anomalous metric nodes at the time of decision
+  anomalous_nodes?: string[];
+  // Forward inference — predicted downstream impacts with eta + probability
+  predictions?: Array<{
+    node: string;
+    service: string;
+    eta_seconds: number;
+    probability: number;
+    current_value?: number;
+    threshold?: number;
+    path?: string[];
+  }>;
+  // Counterfactual — projected health trajectory without intervention
   counterfactual?: MetricSeries[];
 };
 
@@ -28,35 +40,28 @@ export const defaultSnapshot: DashboardSnapshot = {
   tick: 0,
   scenario: null,
   metrics: {
-    db_conn_pool: 82,
-    auth_cpu: 14.2,
+    db_conn_pool: 42,
+    auth_cpu: 28,
     auth_latency_ms: 38,
-    payment_latency_ms: 422,
-    payment_error_rate: 1.2,
-    notif_queue_depth: 1200,
-    notif_cpu: 22
+    payment_latency_ms: 41,
+    payment_error_rate: 0.1,
+    notif_queue_depth: 118,
+    notif_cpu: 22,
   },
-  anomalous_nodes: ["payment_latency_ms"],
-  pending_approval: {
-    action: "request_approval",
-    target: "service_b",
-    confidence: 0.721,
-    reasoning: "Agent suggests rerouting 30% of traffic to EDGE_CDN_02 due to local ISP failure.",
-    requires_approval: true,
-    root_cause: "payment_latency_ms",
-    counterfactual: [
-      { t: 0, actual: 94, projected: 94 },
-      { t: 2, actual: 93, projected: 90 },
-      { t: 4, actual: 92, projected: 84 },
-      { t: 6, actual: 91, projected: 76 }
-    ]
-  },
+  anomalous_nodes: [],
+  pending_approval: null,
   decision: null,
-  graph: { nodes: [], edges: [] }
+  graph: { nodes: [], edges: [] },
 };
 
 export function shouldShowApprovalModal(snapshot: DashboardSnapshot) {
-  return Boolean(snapshot.pending_approval && snapshot.pending_approval.confidence < 0.8);
+  return Boolean(
+    snapshot.pending_approval &&
+      snapshot.pending_approval.requires_approval === true &&
+      snapshot.pending_approval.confidence < 0.8 &&
+      snapshot.anomalous_nodes.length > 0 &&
+      snapshot.scenario !== null
+  );
 }
 
 export function formatMetric(metric: string, value: number) {
@@ -64,7 +69,7 @@ export function formatMetric(metric: string, value: number) {
     return `${Math.round(value)}ms`;
   }
   if (metric.includes("rate") || metric.includes("cpu") || metric.includes("pool")) {
-    return `${value}%`;
+    return `${value.toFixed(1)}%`;
   }
   if (metric.includes("queue")) {
     return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : `${Math.round(value)}`;
