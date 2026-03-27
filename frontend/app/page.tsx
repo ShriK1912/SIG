@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AgentReasonTrace } from "../components/AgentReasonTrace";
 import { CausalGraph } from "../components/CausalGraph";
@@ -169,6 +169,27 @@ export default function Page() {
     setSnapshot(payload);
   }
 
+  // Number keys 1-5 inject fault scenarios without opening control panel
+  useEffect(() => {
+    async function handleKey(e: KeyboardEvent) {
+      // Ignore if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const map: Record<string, string> = {
+        "1": "F1", "2": "F2", "3": "F3", "4": "F4", "5": "F5",
+      };
+      const scenario = map[e.key];
+      if (!scenario) return;
+      e.preventDefault();
+      if (scenario === "F5") {
+        await fetch(`${API_BASE}/reset`, { method: "POST" });
+      } else {
+        await fetch(`${API_BASE}/inject/${scenario}`, { method: "POST" });
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
   return (
     <div className="overflow-hidden bg-surface text-on-surface font-body">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
@@ -216,6 +237,15 @@ export default function Page() {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Key hint strip */}
+          <div className="hidden items-center gap-1 lg:flex">
+            {[["1","DB_POOL"],["2","AUTH"],["3","AMBIG"],["4","CASCADE"],["5","RESET"]].map(([k, label]) => (
+              <div key={k} className="flex items-center gap-1 border border-outline-variant/20 bg-surface-container px-2 py-1">
+                <kbd className="font-mono text-[10px] font-bold text-cyan-400">{k}</kbd>
+                <span className="font-mono text-[9px] text-zinc-600">{label}</span>
+              </div>
+            ))}
+          </div>
           <button className="material-symbols-outlined text-zinc-500 transition-colors hover:text-cyan-300">
             sensors
           </button>
